@@ -1,0 +1,17 @@
+{
+  "version": 4,
+  "configurations": [
+    {
+      "name": "MSYS2 UCRT64 GCC",
+      "compilerPath": "g++.exe",
+      "intelliSenseMode": "windows-gcc-x64",
+      "cStandard": "c17",
+      "cppStandard": "c++23",
+      "includePath": ["${workspaceFolder}/client/src/**"],
+      "browse": {
+        "path": ["${workspaceFolder}/client/src"],
+        "limitSymbolsToIncludedHeaders": true
+      }
+    }
+  ]
+}

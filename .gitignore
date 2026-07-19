@@ -1,0 +1,31 @@
+# Native build outputs
+/build/
+/dist/
+*.exe
+*.dll
+*.o
+*.obj
+
+# Cloudflare / Node
+/server/node_modules/
+/server/.wrangler/
+npm-debug.log*
+
+# Local secrets and credentials
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+*.pem
+*.key
+*.pfx
+
+# Editors and operating systems
+.DS_Store
+Thumbs.db
+*.user
+*.suo
+
+# Local runtime data
+*.log

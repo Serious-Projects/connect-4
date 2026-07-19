@@ -1,0 +1,15 @@
+{
+  "name": "connect-four-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node --test test/game.test.js test/protocol.test.js",
+    "test:live": "node test/live-smoke.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.112.0"
+  }
+}

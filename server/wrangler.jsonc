@@ -1,0 +1,31 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "connect-four-relay",
+  "main": "src/index.js",
+  "compatibility_date": "2026-07-17",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "GAME_ROOMS",
+        "class_name": "GameRoom"
+      },
+      {
+        "name": "ROOM_LIMITER",
+        "class_name": "RoomCreationLimiter"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["GameRoom"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["RoomCreationLimiter"]
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}
