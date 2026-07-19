@@ -16,6 +16,7 @@ export function createGame() {
     history: [],
     lastReplay: [],
     players: { 1: null, 2: null },
+    lastSeen: { 1: 0, 2: 0 },
     names: { 1: "Player one", 2: "Player two" },
     rematchVotes: [],
     winningCells: [],
@@ -31,6 +32,8 @@ export function normalizeGame(value) {
     value.scores && typeof value.scores === "object" ? value.scores : {};
   const players =
     value.players && typeof value.players === "object" ? value.players : {};
+  const lastSeen =
+    value.lastSeen && typeof value.lastSeen === "object" ? value.lastSeen : {};
   const names =
     value.names && typeof value.names === "object" ? value.names : {};
   const cleanMoves = (moves) => {
@@ -107,6 +110,10 @@ export function normalizeGame(value) {
     players: {
       1: typeof players[1] === "string" ? players[1] : null,
       2: typeof players[2] === "string" ? players[2] : null,
+    },
+    lastSeen: {
+      1: Number.isFinite(lastSeen[1]) && lastSeen[1] > 0 ? lastSeen[1] : 0,
+      2: Number.isFinite(lastSeen[2]) && lastSeen[2] > 0 ? lastSeen[2] : 0,
     },
     names: {
       1:

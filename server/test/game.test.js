@@ -105,6 +105,20 @@ test("normalizes legacy and malformed persisted rooms safely", () => {
   assert.deepEqual(reset.history, []);
 });
 
+test("normalizes seat last-seen timestamps", () => {
+  const fresh = normalizeGame({});
+  assert.deepEqual(fresh.lastSeen, { 1: 0, 2: 0 });
+
+  const legacy = normalizeGame({ board: Array(42).fill(0), turn: 1 });
+  assert.deepEqual(legacy.lastSeen, { 1: 0, 2: 0 });
+
+  const seen = normalizeGame({ lastSeen: { 1: 1234, 2: "bogus" } });
+  assert.deepEqual(seen.lastSeen, { 1: 1234, 2: 0 });
+
+  const invalid = normalizeGame({ lastSeen: { 1: -5, 2: Infinity } });
+  assert.deepEqual(invalid.lastSeen, { 1: 0, 2: 0 });
+});
+
 test("preserves board, history and outcome invariants across randomized games", () => {
   let seed = 0xc04f0;
   const random = () => (seed = (seed * 1664525 + 1013904223) >>> 0);

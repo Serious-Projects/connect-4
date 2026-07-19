@@ -22,6 +22,9 @@ const ROOM_CREATION_WINDOW_MS = 60 * 60 * 1000;
 const MAX_ROOMS_PER_WINDOW = 20;
 const REACTIONS = new Set(["thumbs", "fire", "laugh", "wow"]);
 const REACTION_COOLDOWN_MS = 900;
+const CURSOR_WINDOW_MS = 1000;
+const MAX_CURSORS_PER_WINDOW = 30;
+const SEAT_RECLAIM_GRACE_MS = 2 * 60 * 1000;
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
@@ -46,7 +49,7 @@ export default {
         },
       });
     if (url.pathname === "/" || url.pathname === "/health")
-      return json({ ok: true, service: "connect-four-relay", version: 7 });
+      return json({ ok: true, service: "connect-four-relay", version: 8 });
     if (url.pathname === "/rooms" && request.method === "POST") {
       const clientKey =
         request.headers.get("CF-Connecting-IP") || "local-client";
@@ -121,6 +124,7 @@ export class GameRoom extends DurableObject {
         return json({ ok: false, error: "already_reserved" }, 409);
       this.reserved = true;
       await this.ctx.storage.put("reserved", true);
+      await this.ctx.storage.put("reservedAt", Date.now());
       await this.ctx.storage.setAlarm(Date.now() + ROOM_TTL_MS);
       return json({ ok: true }, 201);
     }
@@ -132,11 +136,16 @@ export class GameRoom extends DurableObject {
         game: publicGame(this.game),
         connected: this.ctx.getWebSockets().length,
       });
-    if (this.ctx.getWebSockets().length >= MAX_CONNECTIONS_PER_ROOM)
-      return json({ ok: false, error: "room_connection_limit" }, 429);
-
     let token =
       url.searchParams.get("token")?.slice(0, 80) || crypto.randomUUID();
+    // Sockets this token already holds are closed below and replaced by this
+    // connection, so they must not count against the room capacity.
+    const liveOtherConnections = this.ctx
+      .getWebSockets()
+      .filter((socket) => socket.deserializeAttachment()?.token !== token);
+    if (liveOtherConnections.length >= MAX_CONNECTIONS_PER_ROOM)
+      return json({ ok: false, error: "room_connection_limit" }, 429);
+
     const requestedName = sanitizePlayerName(url.searchParams.get("name"));
     let seat = this.seatForToken(token);
     let identityChanged = false;
@@ -145,11 +154,19 @@ export class GameRoom extends DurableObject {
       identityChanged = true;
     }
     if (!seat) {
+      const now = Date.now();
       const connected = new Set(this.connectedSeats());
-      // A disconnected seat may be reclaimed after an app restart. A client
-      // presenting its original token still keeps its exact seat above.
-      if (!connected.has(1)) seat = 1;
-      else if (!connected.has(2)) seat = 2;
+      this.game.lastSeen ??= { 1: 0, 2: 0 };
+      // A never-claimed seat is free immediately. A seat whose player merely
+      // dropped (network blip, app restart) stays reserved for its original
+      // token during the grace period so a newcomer cannot hijack it; the
+      // original token always reclaims its exact seat above.
+      const claimable = (candidate) =>
+        !connected.has(candidate) &&
+        (!this.game.players[candidate] ||
+          now - (this.game.lastSeen[candidate] || 0) >= SEAT_RECLAIM_GRACE_MS);
+      if (claimable(1)) seat = 1;
+      else if (claimable(2)) seat = 2;
       else seat = 0;
       if (seat) {
         this.game.players[seat] = token;
@@ -160,6 +177,11 @@ export class GameRoom extends DurableObject {
         this.game.updatedAt = Date.now();
         identityChanged = true;
       }
+    }
+    if (seat) {
+      this.game.lastSeen ??= { 1: 0, 2: 0 };
+      this.game.lastSeen[seat] = Date.now();
+      identityChanged = true;
     }
 
     const pair = new WebSocketPair();
@@ -215,17 +237,30 @@ export class GameRoom extends DurableObject {
     }
     const attachment = socket.deserializeAttachment() || {};
     const now = Date.now();
-    if (now - (attachment.rateStartedAt || 0) >= MESSAGE_WINDOW_MS) {
-      attachment.rateStartedAt = now;
-      attachment.rateCount = 0;
-    }
-    attachment.rateCount = (attachment.rateCount || 0) + 1;
-    socket.serializeAttachment(attachment);
-    if (attachment.rateCount > MAX_MESSAGES_PER_WINDOW) {
-      socket.close(1008, "Message rate exceeded");
-      return;
-    }
     const decoded = decodeClientMessage(message);
+    // Cursor previews are high-frequency and purely cosmetic: excess ones are
+    // dropped silently so an enthusiastic mouse never severs the connection.
+    // Everything else counts toward the hard budget that closes abusers.
+    if (decoded.ok && decoded.data.type === "cursor") {
+      if (now - (attachment.cursorStartedAt || 0) >= CURSOR_WINDOW_MS) {
+        attachment.cursorStartedAt = now;
+        attachment.cursorCount = 0;
+      }
+      attachment.cursorCount = (attachment.cursorCount || 0) + 1;
+      socket.serializeAttachment(attachment);
+      if (attachment.cursorCount > MAX_CURSORS_PER_WINDOW) return;
+    } else {
+      if (now - (attachment.rateStartedAt || 0) >= MESSAGE_WINDOW_MS) {
+        attachment.rateStartedAt = now;
+        attachment.rateCount = 0;
+      }
+      attachment.rateCount = (attachment.rateCount || 0) + 1;
+      socket.serializeAttachment(attachment);
+      if (attachment.rateCount > MAX_MESSAGES_PER_WINDOW) {
+        socket.close(1008, "Message rate exceeded");
+        return;
+      }
+    }
     if (!decoded.ok) return this.error(socket, decoded.error);
     const { data } = decoded;
     const { seat } = attachment;
@@ -295,8 +330,17 @@ export class GameRoom extends DurableObject {
     this.error(socket, "unknown_message_type");
   }
 
-  webSocketClose(socket) {
+  async webSocketClose(socket) {
+    await this.ready;
     const attachment = socket.deserializeAttachment() || {};
+    if (
+      attachment.seat &&
+      this.game.players[attachment.seat] === attachment.token
+    ) {
+      this.game.lastSeen ??= { 1: 0, 2: 0 };
+      this.game.lastSeen[attachment.seat] = Date.now();
+      this.ctx.waitUntil(this.save());
+    }
     this.broadcast({
       type: "presence",
       connected: this.connectedSeats(attachment.connectionId, attachment.seat),
@@ -365,7 +409,17 @@ export class GameRoom extends DurableObject {
       await this.ctx.storage.setAlarm(Date.now() + ROOM_TTL_MS);
       return;
     }
-    const lastActivity = this.game.updatedAt || 0;
+    // The in-memory game is recreated with a fresh timestamp on every wake, so
+    // expiry must be judged from persisted state only. A room that was
+    // reserved but never played has no stored game and expires from its
+    // reservation time instead of rescheduling itself forever.
+    const storedGame = await this.ctx.storage.get("game");
+    const reservedAt = (await this.ctx.storage.get("reservedAt")) ?? 0;
+    const lastActivity = storedGame
+      ? Number.isFinite(storedGame.updatedAt)
+        ? storedGame.updatedAt
+        : 0
+      : reservedAt;
     const remaining = lastActivity + ROOM_TTL_MS - Date.now();
     if (remaining > 0) {
       await this.ctx.storage.setAlarm(Date.now() + remaining);

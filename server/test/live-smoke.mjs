@@ -56,10 +56,10 @@ async function expectMove(client, column) {
 let health;
 for (let attempt = 0; attempt < 15; ++attempt) {
   health = await fetch(`${origin}/health?attempt=${attempt}`, { cache: "no-store" }).then((response) => response.json());
-  if (health.version === 7) break;
+  if (health.version === 8) break;
   await new Promise((resolve) => setTimeout(resolve, 2000));
 }
-assert.equal(health.version, 7);
+assert.equal(health.version, 8);
 const created = await fetch(`${origin}/rooms`, { method: "POST" }).then((response) => response.json());
 assert.match(created.room, /^[A-HJ-NP-Z2-9]{6}$/);
 
@@ -131,4 +131,4 @@ assert.equal(returnedGuest.welcome.game.names[2], "Returned");
 returnedGuest.socket.close(1000, "test complete");
 
 for (const client of joined) client.socket.close(1000, "test complete");
-console.log(`Live relay v7 smoke passed in room ${created.room}.`);
+console.log(`Live relay v8 smoke passed in room ${created.room}.`);
