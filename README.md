@@ -3,10 +3,15 @@
 A modern native Connect Four game with a C++23/raylib client and an
 authoritative Cloudflare Worker relay for private online matches.
 
+The Windows build bundles its interface and emoji fonts, so it does not depend
+on fonts installed on the player's computer. See
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for font attribution.
+
 ## Repository layout
 
 ```text
 client/            Native Windows client and logic tests
+  assets/fonts/    Bundled OFL-licensed interface and emoji fonts
   src/app/         Application orchestration and shared view state
   src/audio/       Audio device, generated sounds, and settings
   src/core/        Platform-independent Connect Four rules

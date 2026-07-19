@@ -32,7 +32,22 @@ $msysRoot = Split-Path -Parent $toolchain
 $env:Path = "$(Join-Path $toolchain 'bin');$(Join-Path $msysRoot 'usr\bin');$env:Path"
 $testOutput = Join-Path $root 'build\tests'
 $gameOutput = Join-Path $root 'dist\windows'
-New-Item -ItemType Directory -Force -Path $testOutput, $gameOutput | Out-Null
+$fontSource = Join-Path $client 'assets\fonts'
+$fontOutput = Join-Path $gameOutput 'assets\fonts'
+$fontFiles = @(
+    'AtkinsonHyperlegible-Regular.ttf',
+    'AtkinsonHyperlegible-Bold.ttf',
+    'AtkinsonHyperlegible-OFL.txt',
+    'NotoEmoji.ttf',
+    'NotoEmoji-OFL.txt'
+)
+foreach ($font in $fontFiles) {
+    $fontPath = Join-Path $fontSource $font
+    if (-not (Test-Path -LiteralPath $fontPath)) {
+        throw "Required bundled font asset was not found: $fontPath"
+    }
+}
+New-Item -ItemType Directory -Force -Path $testOutput, $gameOutput, $fontOutput | Out-Null
 
 & $gxx -std=c++23 -O2 -Wall -Wextra -pedantic `
     (Join-Path $client 'tests\connect_four_tests.cpp') `
@@ -55,5 +70,8 @@ if (-not $TestOnly) {
         -lopengl32 -lgdi32 -lwinmm -lwinhttp -static -mwindows
     if ($LASTEXITCODE -ne 0) { throw 'Game compilation failed.' }
     Copy-Item $glfwRuntime $gameOutput -Force
+    foreach ($font in $fontFiles) {
+        Copy-Item (Join-Path $fontSource $font) $fontOutput -Force
+    }
     Write-Host "Built: $(Join-Path $gameOutput 'connect_four.exe')"
 }

@@ -1,13 +1,34 @@
 #include "ui/font_assets.hpp"
 
+#include <filesystem>
+
+namespace {
+
+std::filesystem::path font_directory() {
+    const auto packaged = std::filesystem::path(GetApplicationDirectory()) / "assets" / "fonts";
+    if (std::filesystem::exists(packaged)) return packaged;
+
+    const auto source = std::filesystem::path(GetWorkingDirectory()) / "client" / "assets" / "fonts";
+    if (std::filesystem::exists(source)) return source;
+
+    return packaged;
+}
+
+}  // namespace
+
 namespace app {
 
 FontAssets::FontAssets() {
+    const auto fonts = font_directory();
+    const auto regular_path = (fonts / "AtkinsonHyperlegible-Regular.ttf").string();
+    const auto bold_path = (fonts / "AtkinsonHyperlegible-Bold.ttf").string();
+    const auto emoji_path = (fonts / "NotoEmoji.ttf").string();
+
     // Keep source atlases near their UI sizes so small text remains crisp.
-    regular = LoadFontEx("C:/Windows/Fonts/segoeui.ttf", 24, nullptr, 0);
-    bold = LoadFontEx("C:/Windows/Fonts/segoeuib.ttf", 32, nullptr, 0);
+    regular = LoadFontEx(regular_path.c_str(), 24, nullptr, 0);
+    bold = LoadFontEx(bold_path.c_str(), 32, nullptr, 0);
     int emoji_codepoints[]{0x1F44D, 0x1F525, 0x1F602, 0x1F62E};
-    emoji = LoadFontEx("C:/Windows/Fonts/seguiemj.ttf", 64, emoji_codepoints, 4);
+    emoji = LoadFontEx(emoji_path.c_str(), 64, emoji_codepoints, 4);
 
     regular_loaded_ = IsFontValid(regular);
     bold_loaded_ = IsFontValid(bold);
@@ -20,6 +41,10 @@ FontAssets::FontAssets() {
     if (!regular_loaded_) regular = GetFontDefault();
     if (!bold_loaded_) bold = GetFontDefault();
     if (!emoji_loaded_) emoji = GetFontDefault();
+
+    if (!regular_loaded_ || !bold_loaded_)
+        TraceLog(LOG_WARNING, "Bundled interface fonts could not be loaded from %s", fonts.string().c_str());
+    if (!emoji_available) TraceLog(LOG_WARNING, "Bundled emoji glyphs are unavailable; using text reaction labels");
 
     SetTextureFilter(regular.texture, TEXTURE_FILTER_BILINEAR);
     SetTextureFilter(bold.texture, TEXTURE_FILTER_BILINEAR);
