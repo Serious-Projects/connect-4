@@ -21,13 +21,10 @@ SoundSettings load_sound_settings() {
     std::ifstream input(settings_path());
     int muted = 0;
     if (input >> settings.master >> settings.effects >> settings.celebration >> muted) {
-        settings.master =
-            std::isfinite(settings.master) ? std::clamp(settings.master, 0.0F, 1.0F) : 0.8F;
-        settings.effects =
-            std::isfinite(settings.effects) ? std::clamp(settings.effects, 0.0F, 1.0F) : 0.9F;
-        settings.celebration = std::isfinite(settings.celebration)
-                                   ? std::clamp(settings.celebration, 0.0F, 1.0F)
-                                   : 0.85F;
+        settings.master = std::isfinite(settings.master) ? std::clamp(settings.master, 0.0F, 1.0F) : 0.8F;
+        settings.effects = std::isfinite(settings.effects) ? std::clamp(settings.effects, 0.0F, 1.0F) : 0.9F;
+        settings.celebration =
+            std::isfinite(settings.celebration) ? std::clamp(settings.celebration, 0.0F, 1.0F) : 0.85F;
         settings.muted = muted != 0;
     }
     return settings;
@@ -40,9 +37,8 @@ Sound make_tone(float frequency, float duration, bool victory = false) {
         const float t = static_cast<float>(i) / rate;
         const float envelope = std::pow(1.0F - t / duration, 1.6F);
         const float sweep = victory ? frequency + t * 620.0F : frequency - t * 85.0F;
-        const float value = (std::sin(6.2831853F * sweep * t) * 0.72F +
-                             std::sin(6.2831853F * sweep * 0.5F * t) * 0.22F) *
-                            envelope;
+        const float value =
+            (std::sin(6.2831853F * sweep * t) * 0.72F + std::sin(6.2831853F * sweep * 0.5F * t) * 0.22F) * envelope;
         samples[i] = static_cast<std::int16_t>(value * 27000);
     }
     Wave wave{static_cast<unsigned>(samples.size()), rate, 16, 1, samples.data()};
@@ -82,8 +78,8 @@ void AudioManager::save_settings() const {
     if (path.has_parent_path()) std::filesystem::create_directories(path.parent_path(), error);
     std::ofstream output(path, std::ios::trunc);
     if (output)
-        output << settings_.master << ' ' << settings_.effects << ' ' << settings_.celebration
-               << ' ' << settings_.muted << '\n';
+        output << settings_.master << ' ' << settings_.effects << ' ' << settings_.celebration << ' ' << settings_.muted
+               << '\n';
 }
 
 void AudioManager::play_drop() const {

@@ -27,10 +27,7 @@ struct LobbyView {
 };
 
 void draw_online_lobby(Font regular, Font bold, const LobbyView& view);
-void draw_reaction_bubbles(Font bold,
-                           Font emoji,
-                           bool emoji_available,
-                           const std::vector<ReactionBubble>& reactions);
+void draw_reaction_bubbles(Font bold, Font emoji, bool emoji_available, const std::vector<ReactionBubble>& reactions);
 void draw_reaction_panel(Font regular, Font bold, Font emoji, bool emoji_available);
 void draw_sound_panel(Font regular, Font bold, const SoundSettings& settings);
 

@@ -77,8 +77,7 @@ int main() {
         assert(sanitize_player_name("abcdefghijklmnopq") == "abcdefghijklmnop");
         using online_helpers::json_string_value;
         assert(json_string_value(R"({"name":"Jay"})", "name") == "Jay");
-        assert(json_string_value(R"({"name":"A \"quoted\" \\ name"})", "name") ==
-               "A \"quoted\" \\ name");
+        assert(json_string_value(R"({"name":"A \"quoted\" \\ name"})", "name") == "A \"quoted\" \\ name");
         assert(json_string_value(R"({"name":"line\nnext"})", "name") == "line\nnext");
         assert(json_string_value(R"({"name":"caf\u00e9"})", "name") == "caf\xC3\xA9");
         assert(json_string_value(R"({"name":"unterminated})", "name").empty());
@@ -89,8 +88,8 @@ int main() {
             int column;
             int player;
         };
-        const std::vector<ReplayMove>
-            win{{5, 0, 1}, {5, 1, 2}, {4, 0, 1}, {4, 1, 2}, {3, 0, 1}, {3, 1, 2}, {2, 0, 1}};
+
+        const std::vector<ReplayMove> win{{5, 0, 1}, {5, 1, 2}, {4, 0, 1}, {4, 1, 2}, {3, 0, 1}, {3, 1, 2}, {2, 0, 1}};
         const auto replay = online_helpers::build_replay_model(win);
         assert(replay.valid && replay.winner == 1 && !replay.draw);
         const std::array<int, 2> expected_start{2, 0};
@@ -117,13 +116,8 @@ int main() {
         const auto draw_replay = online_helpers::build_replay_model(draw);
         assert(draw_replay.valid && draw_replay.draw && draw_replay.winner == 0);
 
-        const std::vector<ReplayMove> gold_starts{{5, 2, 2},
-                                                  {5, 3, 1},
-                                                  {4, 2, 2},
-                                                  {4, 3, 1},
-                                                  {3, 2, 2},
-                                                  {3, 3, 1},
-                                                  {2, 2, 2}};
+        const std::vector<ReplayMove> gold_starts{{5, 2, 2}, {5, 3, 1}, {4, 2, 2}, {4, 3, 1},
+                                                  {3, 2, 2}, {3, 3, 1}, {2, 2, 2}};
         const auto gold_replay = online_helpers::build_replay_model(gold_starts);
         assert(gold_replay.valid && gold_replay.winner == 2);
     }
@@ -131,17 +125,18 @@ int main() {
         std::mt19937 random(0xC04F0U);
         for (int trial = 0; trial < 2500; ++trial) {
             Game game;
+
             struct ReplayMove {
                 int row;
                 int column;
                 int player;
             };
+
             std::vector<ReplayMove> history;
             while (!game.over()) {
                 const int column = static_cast<int>(random() % columns);
                 const auto move = game.drop(column);
-                if (move)
-                    history.push_back({move->row, move->column, static_cast<int>(move->player)});
+                if (move) history.push_back({move->row, move->column, static_cast<int>(move->player)});
             }
             const auto replay = online_helpers::build_replay_model(history);
             assert(replay.valid);
@@ -149,8 +144,7 @@ int main() {
             assert(replay.draw == game.draw());
             for (int row = 0; row < rows; ++row)
                 for (int column = 0; column < columns; ++column)
-                    assert(replay.board[row * columns + column] ==
-                           static_cast<int>(game.grid()[row][column]));
+                    assert(replay.board[row * columns + column] == static_cast<int>(game.grid()[row][column]));
         }
     }
     std::cout << "All Connect Four logic tests passed.\n";

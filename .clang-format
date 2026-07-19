@@ -8,11 +8,11 @@ UseTab: Never
 ContinuationIndentWidth: 4
 
 BreakBeforeBraces: Attach
-ColumnLimit: 100
-BinPackArguments: false
-BinPackParameters: false
-AllowAllArgumentsOnNextLine: false
-AllowAllParametersOfDeclarationOnNextLine: false
+ColumnLimit: 120
+BinPackArguments: true
+BinPackParameters: true
+AllowAllArgumentsOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: true
 
 SpaceBeforeParens: ControlStatements
 SpacesInAngles: Never
@@ -22,11 +22,14 @@ PointerAlignment: Left
 ReferenceAlignment: Left
 
 AllowShortBlocksOnASingleLine: Empty
-AllowShortFunctionsOnASingleLine: Empty
+AllowShortFunctionsOnASingleLine: Inline
 AllowShortIfStatementsOnASingleLine: WithoutElse
 AllowShortLoopsOnASingleLine: true
 
-AlignAfterOpenBracket: Align
+MaxEmptyLinesToKeep: 1
+SeparateDefinitionBlocks: Always
+
+AlignAfterOpenBracket: BlockIndent
 AlignConsecutiveAssignments: None
 AlignConsecutiveDeclarations: None
 SortIncludes: CaseSensitive

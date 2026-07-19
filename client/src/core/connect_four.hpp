@@ -22,8 +22,7 @@ class Game {
     using Grid = std::array<std::array<Player, columns>, rows>;
 
     std::optional<Move> drop(int column) {
-        if (column < 0 || column >= columns || winner_ != Player::none || draw_)
-            return std::nullopt;
+        if (column < 0 || column >= columns || winner_ != Player::none || draw_) return std::nullopt;
         for (int row = rows - 1; row >= 0; --row) {
             if (grid_[row][column] != Player::none) continue;
             const Move move{row, column, current_};
@@ -59,35 +58,26 @@ class Game {
         winning_cells_.fill({-1, -1});
     }
 
-    const Grid& grid() const {
-        return grid_;
-    }
-    Player current() const {
-        return current_;
-    }
-    Player winner() const {
-        return winner_;
-    }
-    bool draw() const {
-        return draw_;
-    }
-    bool over() const {
-        return winner_ != Player::none || draw_;
-    }
-    const std::array<std::array<int, 2>, 4>& winning_cells() const {
-        return winning_cells_;
-    }
-    std::size_t move_count() const {
-        return history_.size();
-    }
+    const Grid& grid() const { return grid_; }
+
+    Player current() const { return current_; }
+
+    Player winner() const { return winner_; }
+
+    bool draw() const { return draw_; }
+
+    bool over() const { return winner_ != Player::none || draw_; }
+
+    const std::array<std::array<int, 2>, 4>& winning_cells() const { return winning_cells_; }
+
+    std::size_t move_count() const { return history_.size(); }
 
     // Applies the server-authoritative board in online games. Local games still
     // use drop()/undo(), so their history remains untouched.
-    void sync_online(const std::array<int, rows * columns>& board,
-                     int turn,
-                     int winner,
-                     bool draw,
-                     const std::array<std::array<int, 2>, 4>& winning_cells) {
+    void sync_online(
+        const std::array<int, rows * columns>& board, int turn, int winner, bool draw,
+        const std::array<std::array<int, 2>, 4>& winning_cells
+    ) {
         for (int row = 0; row < rows; ++row)
             for (int column = 0; column < columns; ++column)
                 grid_[row][column] = board[row * columns + column] == 1   ? Player::coral
@@ -108,9 +98,7 @@ class Game {
     bool draw_{};
     std::array<std::array<int, 2>, 4> winning_cells_{{{-1, -1}, {-1, -1}, {-1, -1}, {-1, -1}}};
 
-    static Player other(Player player) {
-        return player == Player::coral ? Player::gold : Player::coral;
-    }
+    static Player other(Player player) { return player == Player::coral ? Player::gold : Player::coral; }
 
     bool find_win(Move move) {
         constexpr int directions[][2]{{0, 1}, {1, 0}, {1, 1}, {1, -1}};
@@ -119,8 +107,7 @@ class Game {
             for (int sign : {-1, 1}) {
                 int row = move.row + direction[0] * sign;
                 int col = move.column + direction[1] * sign;
-                while (row >= 0 && row < rows && col >= 0 && col < columns &&
-                       grid_[row][col] == move.player) {
+                while (row >= 0 && row < rows && col >= 0 && col < columns && grid_[row][col] == move.player) {
                     if (sign < 0)
                         line.insert(line.begin(), {row, col});
                     else

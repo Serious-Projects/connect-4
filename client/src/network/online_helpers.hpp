@@ -15,8 +15,7 @@ inline bool room_code_character(unsigned char character) {
 inline std::string sanitize_player_name(const std::string& input) {
     std::string result;
     for (const unsigned char character : input) {
-        if ((std::isalnum(character) || character == ' ' || character == '-' || character == '_') &&
-            result.size() < 16)
+        if ((std::isalnum(character) || character == ' ' || character == '-' || character == '_') && result.size() < 16)
             result += static_cast<char>(character);
     }
     const auto first = result.find_first_not_of(' ');
@@ -28,8 +27,7 @@ inline std::string sanitize_player_name(const std::string& input) {
 inline std::string extract_room_code(const std::string& input) {
     std::string candidate;
     for (std::size_t index = 0; index <= input.size(); ++index) {
-        const unsigned char character =
-            index < input.size() ? static_cast<unsigned char>(input[index]) : 0;
+        const unsigned char character = index < input.size() ? static_cast<unsigned char>(input[index]) : 0;
         if (index < input.size() && room_code_character(character)) {
             candidate += static_cast<char>(std::toupper(character));
         } else {
@@ -116,8 +114,8 @@ ReplayModel build_replay_model(const Moves& moves) {
 
     int expected_player = moves.front().player;
     for (const auto& move : moves) {
-        if (!valid_replay_move(move.row, move.column, move.player) ||
-            move.player != expected_player || model.winner != 0 || model.draw)
+        if (!valid_replay_move(move.row, move.column, move.player) || move.player != expected_player ||
+            model.winner != 0 || model.draw)
             return {};
 
         int landing_row = 5;

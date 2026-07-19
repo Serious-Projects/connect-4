@@ -25,20 +25,20 @@ void text(Font font, const char* value, float x, float y, float size, Color colo
 
 void draw_disc(float x, float y, float radius, Color color, float glow) {
     for (int i = static_cast<int>(glow); i > 0; --i)
-        DrawCircle(static_cast<int>(x),
-                   static_cast<int>(y),
-                   radius + i * 2,
-                   Color{color.r, color.g, color.b, static_cast<unsigned char>(8 + i * 7)});
+        DrawCircle(
+            static_cast<int>(x), static_cast<int>(y), radius + i * 2,
+            Color{color.r, color.g, color.b, static_cast<unsigned char>(8 + i * 7)}
+        );
     DrawCircle(static_cast<int>(x + 3), static_cast<int>(y + 6), radius + 1, Color{0, 0, 0, 100});
-    const Color edge{static_cast<unsigned char>(color.r * .72F),
-                     static_cast<unsigned char>(color.g * .72F),
-                     static_cast<unsigned char>(color.b * .72F),
-                     255};
+    const Color edge{
+        static_cast<unsigned char>(color.r * .72F), static_cast<unsigned char>(color.g * .72F),
+        static_cast<unsigned char>(color.b * .72F), 255
+    };
     DrawCircleGradient({x, y}, radius, Color{255, 255, 255, 120}, edge);
-    DrawCircle(static_cast<int>(x - radius * .28F),
-               static_cast<int>(y - radius * .3F),
-               radius * .16F,
-               Color{255, 255, 255, 145});
+    DrawCircle(
+        static_cast<int>(x - radius * .28F), static_cast<int>(y - radius * .3F), radius * .16F,
+        Color{255, 255, 255, 145}
+    );
     DrawCircleLines(static_cast<int>(x), static_cast<int>(y), radius, Color{255, 255, 255, 90});
 }
 

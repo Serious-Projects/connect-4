@@ -19,15 +19,11 @@ class AudioManager {
     AudioManager(const AudioManager&) = delete;
     AudioManager& operator=(const AudioManager&) = delete;
 
-    bool ready() const {
-        return ready_;
-    }
-    SoundSettings& settings() {
-        return settings_;
-    }
-    const SoundSettings& settings() const {
-        return settings_;
-    }
+    bool ready() const { return ready_; }
+
+    SoundSettings& settings() { return settings_; }
+
+    const SoundSettings& settings() const { return settings_; }
 
     void apply_settings();
     void save_settings() const;
