@@ -5,6 +5,10 @@ export function sanitizePlayerName(value) {
     .join("");
 }
 
+export function playerNameForNewIdentity(requestedName, seat) {
+  return requestedName || (seat === 1 ? "Player one" : "Player two");
+}
+
 export function decodeClientMessage(message) {
   let data;
   try {

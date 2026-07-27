@@ -24,6 +24,7 @@ struct LobbyView {
     const std::string& room_code;
     const std::string& status;
     bool name_field_active{};
+    bool busy{};
 };
 
 void draw_online_lobby(Font regular, Font bold, const LobbyView& view);

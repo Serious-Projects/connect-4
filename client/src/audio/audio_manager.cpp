@@ -49,6 +49,7 @@ Sound make_tone(float frequency, float duration, bool victory = false) {
 
 AudioManager::AudioManager() : settings_(load_sound_settings()) {
     InitAudioDevice();
+
     ready_ = IsAudioDeviceReady();
     if (!ready_) return;
 
@@ -56,6 +57,7 @@ AudioManager::AudioManager() : settings_(load_sound_settings()) {
     win_sound_ = make_tone(390, .7F, true);
     drop_loaded_ = IsSoundValid(drop_sound_);
     win_loaded_ = IsSoundValid(win_sound_);
+
     apply_settings();
 }
 
@@ -67,15 +69,19 @@ AudioManager::~AudioManager() {
 
 void AudioManager::apply_settings() {
     if (!ready_) return;
+
     SetMasterVolume(settings_.muted ? 0.0F : settings_.master);
+
     if (drop_loaded_) SetSoundVolume(drop_sound_, settings_.effects);
     if (win_loaded_) SetSoundVolume(win_sound_, settings_.celebration);
 }
 
 void AudioManager::save_settings() const {
     const auto path = settings_path();
+
     std::error_code error;
     if (path.has_parent_path()) std::filesystem::create_directories(path.parent_path(), error);
+
     std::ofstream output(path, std::ios::trunc);
     if (output)
         output << settings_.master << ' ' << settings_.effects << ' ' << settings_.celebration << ' ' << settings_.muted

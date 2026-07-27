@@ -22,10 +22,8 @@ if ($ToolchainPath) {
 $raylib = Join-Path $toolchain 'lib\libraylib.a'
 $glfwLibrary = Join-Path $toolchain 'lib\libglfw3.dll.a'
 $glfwRuntime = Join-Path $toolchain 'bin\glfw3.dll'
-foreach ($required in $gxx, $raylib, $glfwLibrary, $glfwRuntime) {
-    if (-not (Test-Path -LiteralPath $required)) {
-        throw "Required toolchain file was not found: $required"
-    }
+if (-not (Test-Path -LiteralPath $gxx)) {
+    throw "Required compiler was not found: $gxx"
 }
 
 $msysRoot = Split-Path -Parent $toolchain
@@ -41,13 +39,7 @@ $fontFiles = @(
     'NotoEmoji.ttf',
     'NotoEmoji-OFL.txt'
 )
-foreach ($font in $fontFiles) {
-    $fontPath = Join-Path $fontSource $font
-    if (-not (Test-Path -LiteralPath $fontPath)) {
-        throw "Required bundled font asset was not found: $fontPath"
-    }
-}
-New-Item -ItemType Directory -Force -Path $testOutput, $gameOutput, $fontOutput | Out-Null
+New-Item -ItemType Directory -Force -Path $testOutput | Out-Null
 
 & $gxx -std=c++23 -O2 -Wall -Wextra -pedantic `
     (Join-Path $client 'tests\connect_four_tests.cpp') `
@@ -58,6 +50,19 @@ if ($LASTEXITCODE -ne 0) { throw 'Logic test compilation failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Connect Four logic tests failed.' }
 
 if (-not $TestOnly) {
+    foreach ($required in $raylib, $glfwLibrary, $glfwRuntime) {
+        if (-not (Test-Path -LiteralPath $required)) {
+            throw "Required game toolchain file was not found: $required"
+        }
+    }
+    foreach ($font in $fontFiles) {
+        $fontPath = Join-Path $fontSource $font
+        if (-not (Test-Path -LiteralPath $fontPath)) {
+            throw "Required bundled font asset was not found: $fontPath"
+        }
+    }
+    New-Item -ItemType Directory -Force -Path $gameOutput, $fontOutput | Out-Null
+
     $gameSources = Get-ChildItem (Join-Path $client 'src') -Recurse -Filter '*.cpp' |
         ForEach-Object { $_.FullName }
     & $gxx -std=c++23 -O3 -Wall -Wextra -pedantic `

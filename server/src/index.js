@@ -6,7 +6,11 @@ import {
   publicGame,
   resetRound,
 } from "./game.js";
-import { decodeClientMessage, sanitizePlayerName } from "./protocol.js";
+import {
+  decodeClientMessage,
+  playerNameForNewIdentity,
+  sanitizePlayerName,
+} from "./protocol.js";
 
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -170,7 +174,10 @@ export class GameRoom extends DurableObject {
       else seat = 0;
       if (seat) {
         this.game.players[seat] = token;
-        if (requestedName) this.game.names[seat] = requestedName;
+        // A reclaimed seat belongs to a new identity. Never leak the previous
+        // player's display name when the new client omitted or supplied an
+        // invalid name.
+        this.game.names[seat] = playerNameForNewIdentity(requestedName, seat);
         this.game.rematchVotes = this.game.rematchVotes.filter(
           (vote) => vote !== seat,
         );

@@ -53,6 +53,7 @@ static std::string friendly_online_error(const std::string& error) {
 int app::run_game() {
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
     InitWindow(screen_width, screen_height, "CONNECT FOUR // NEON DUEL");
+    SetExitKey(KEY_NULL);
     SetTargetFPS(120);
     AudioManager audio;
     SoundSettings& sound_settings = audio.settings();
@@ -80,6 +81,7 @@ int app::run_game() {
     bool attempt_is_reconnect = false;
     bool online_mode = false;
     bool online_lobby = false;
+    bool lobby_opened_from_online = false;
     int online_seat = 0;
     std::string online_room;
     std::string online_token;
@@ -262,6 +264,7 @@ int app::run_game() {
 
     auto begin_online_attempt = [&](std::function<OnlineAttempt()> task) {
         try {
+            online_client.begin_operation();
             online_attempt = std::async(std::launch::async, std::move(task));
             online_attempt_pending = true;
             return true;
@@ -273,7 +276,8 @@ int app::run_game() {
         }
     };
 
-    while (!WindowShouldClose()) {
+    bool exit_requested = false;
+    while (!WindowShouldClose() && !exit_requested) {
         const float dt = std::min(GetFrameTime(), 1.0F / 30.0F);
         const Vector2 mouse = GetMousePosition();
         const int hover = hovered_column(mouse);
@@ -310,6 +314,7 @@ int app::run_game() {
                 online_token = event.token;
                 online_mode = true;
                 online_lobby = false;
+                lobby_opened_from_online = false;
                 online_room = online_client.room();
                 saved_session = {online_room, online_token, player_name_input.empty() ? "Player" : player_name_input};
                 save_session(saved_session);
@@ -384,8 +389,12 @@ int app::run_game() {
 
         // --- Input: mode switches and global hotkeys ---
 
-        if (!online_lobby && IsKeyPressed(KEY_O) && !online_attempt_pending) {
+        const bool online_button_clicked =
+            !online_mode && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(mouse, online_button);
+        if (!online_lobby && !sound_panel && !reaction_panel && (IsKeyPressed(KEY_O) || online_button_clicked) &&
+            !online_attempt_pending) {
             if (replay_active) stop_replay();
+            lobby_opened_from_online = online_mode;
             online_client.disconnect();
             online_mode = false;
             online_lobby = true;
@@ -405,12 +414,16 @@ int app::run_game() {
             while (GetCharPressed() > 0) {}
         }
 
-        if (IsKeyPressed(KEY_F1) && !online_attempt_pending) {
+        const bool local_button_clicked =
+            online_mode && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(mouse, mode_button);
+        if ((IsKeyPressed(KEY_F1) || local_button_clicked) && !sound_panel && !reaction_panel &&
+            !online_attempt_pending) {
             if (replay_active) stop_replay();
             online_client.disconnect();
             online_mode = false;
             move_pending = false;
             online_lobby = false;
+            lobby_opened_from_online = false;
             online_room.clear();
             rival_connected = false;
             reconnect_timer = -1.0F;
@@ -422,7 +435,9 @@ int app::run_game() {
             new_round();
         }
 
-        if (!online_lobby && IsKeyPressed(KEY_S)) {
+        const bool sound_button_clicked =
+            !online_lobby && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(mouse, sound_button);
+        if (!online_lobby && (IsKeyPressed(KEY_S) || sound_button_clicked)) {
             if (sound_panel && sound_settings_dirty) {
                 audio.save_settings();
                 sound_settings_dirty = false;
@@ -434,6 +449,28 @@ int app::run_game() {
         if (!online_lobby && online_mode && rival_connected && online_seat != 0 && IsKeyPressed(KEY_E)) {
             reaction_panel = !reaction_panel;
             sound_panel = false;
+        }
+
+        if (IsKeyPressed(KEY_ESCAPE)) {
+            if (sound_panel) {
+                if (sound_settings_dirty) audio.save_settings();
+                sound_settings_dirty = false;
+                sound_panel = false;
+            } else if (reaction_panel) {
+                reaction_panel = false;
+            } else if (online_lobby) {
+                online_lobby = false;
+                if (lobby_opened_from_online) {
+                    online_room.clear();
+                    coral_score = gold_score = draws = 0;
+                    new_round();
+                }
+                lobby_opened_from_online = false;
+            } else if (replay_active) {
+                stop_replay();
+            } else {
+                exit_requested = true;
+            }
         }
 
         const bool replay_ready =
@@ -623,7 +660,10 @@ int app::run_game() {
             if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && hover >= 0) play_column(hover);
             for (int key = KEY_ONE; key <= KEY_SEVEN; ++key)
                 if (IsKeyPressed(key)) play_column(key - KEY_ONE);
-            if (!online_mode && IsKeyPressed(KEY_U) && game.undo() && !local_replay.empty()) local_replay.pop_back();
+            const bool undo_clicked = !online_mode && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
+                                      CheckCollisionPointRec(mouse, context_button);
+            if (!online_mode && (IsKeyPressed(KEY_U) || undo_clicked) && game.undo() && !local_replay.empty())
+                local_replay.pop_back();
         }
 
         // Cursor previews are throttled below the relay's rate budget; the
@@ -643,7 +683,10 @@ int app::run_game() {
 
         // Both keys are typed into the lobby's text fields, so they must not
         // reach the game shortcuts while the lobby overlay is open.
-        if (!replay_active && !online_lobby && IsKeyPressed(KEY_R)) {
+        const bool rematch_clicked =
+            !online_lobby && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(mouse, rematch_button);
+        if (!replay_active && !online_lobby && !sound_panel && !reaction_panel &&
+            (IsKeyPressed(KEY_R) || rematch_clicked)) {
             if (online_mode && game.over() && outcome_announced && !falling.active && pending_falls.empty()) {
                 if (!online_attempt_pending) {
                     online_client.send_rematch();
@@ -655,10 +698,51 @@ int app::run_game() {
                 new_round();
         }
 
-        if (IsKeyPressed(KEY_M) && !online_mode && !online_lobby && !sound_panel) {
+        const bool reset_clicked =
+            !online_mode && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(mouse, mode_button);
+        if ((IsKeyPressed(KEY_M) || reset_clicked) && !online_mode && !online_lobby && !sound_panel) {
             coral_score = gold_score = draws = 0;
             new_round();
         }
+
+        bool button_hovered = false;
+        bool text_hovered = false;
+        if (online_lobby) {
+            text_hovered =
+                CheckCollisionPointRec(mouse, lobby_name_field) || CheckCollisionPointRec(mouse, lobby_code_field);
+            button_hovered =
+                CheckCollisionPointRec(mouse, lobby_create_button) || CheckCollisionPointRec(mouse, lobby_join_button);
+        } else if (sound_panel) {
+            button_hovered =
+                CheckCollisionPointRec(mouse, mute_button) ||
+                CheckCollisionPointRec(
+                    mouse,
+                    {master_slider.x - 8, master_slider.y - 14, master_slider.width + 16, 36}
+                ) ||
+                CheckCollisionPointRec(
+                    mouse,
+                    {effects_slider.x - 8, effects_slider.y - 14, effects_slider.width + 16, 36}
+                ) ||
+                CheckCollisionPointRec(
+                    mouse,
+                    {celebration_slider.x - 8, celebration_slider.y - 14, celebration_slider.width + 16, 36}
+                );
+        } else {
+            button_hovered = CheckCollisionPointRec(mouse, sound_button) ||
+                             CheckCollisionPointRec(mouse, rematch_button) ||
+                             CheckCollisionPointRec(mouse, mode_button) ||
+                             (!online_mode && CheckCollisionPointRec(mouse, online_button)) ||
+                             (!online_mode && CheckCollisionPointRec(mouse, context_button)) || hover >= 0;
+            if (reaction_panel)
+                for (int index = 0; index < 4; ++index)
+                    button_hovered =
+                        button_hovered || CheckCollisionPointRec(mouse, {620.0F + index * 76.0F, 330, 60, 60});
+        }
+        SetMouseCursor(
+            text_hovered     ? MOUSE_CURSOR_IBEAM
+            : button_hovered ? MOUSE_CURSOR_POINTING_HAND
+                             : MOUSE_CURSOR_DEFAULT
+        );
 
         // --- Simulation: disc physics, outcome reveal, particles ---
 
@@ -742,29 +826,38 @@ int app::run_game() {
         for (int x = 0; x < screen_width; x += 48) DrawLine(x, 0, x, screen_height, Color{255, 255, 255, 5});
         for (int y = 0; y < screen_height; y += 48) DrawLine(0, y, screen_width, y, Color{255, 255, 255, 5});
 
-        text(bold, "Connect Four", 40, 34, 42, RAYWHITE, -1);
-        text(regular, online_mode ? "A private room with a real rival" : "A local strategy duel", 43, 84, 18, muted);
-        DrawRectangleRounded({955, 44, 178, 38}, .5F, 16, Color{255, 255, 255, 12});
+        text(bold, "NEON DUEL", 42, 24, 12, Color{147, 207, 255, 255}, 1.7F);
+        text(bold, "Connect Four", 40, 43, 36, text_primary, -.5F);
+        text(regular, online_mode ? "Private online match" : "Local two-player match", 42, 82, 15, text_secondary);
+        DrawLine(38, 112, 1134, 112, Color{255, 255, 255, 16});
+        draw_button(
+            bold,
+            sound_button,
+            sound_panel ? "Close sound" : "Sound",
+            Color{147, 207, 255, 255},
+            true,
+            false,
+            13
+        );
         const char* role_badge = !online_mode       ? "LOCAL 2P"
                                  : online_seat == 1 ? "HOST"
                                  : online_seat == 2 ? "GUEST"
                                                     : "WATCHING";
         const bool relay_live = !online_mode || online_client.connected();
+        const bool relay_degraded = online_mode && relay_live && online_client.heartbeat_degraded();
         const std::string mode_badge = online_mode && !relay_live ? std::string(role_badge) + "  RETRY"
+                                       : relay_degraded           ? std::string(role_badge) + "  DEGRADED"
                                        : online_mode && latency_ms >= 0
                                            ? std::string(role_badge) + "  " + std::to_string(latency_ms) + "ms"
                                            : role_badge;
-        const Color quality = !relay_live                                         ? coral
+        const Color quality = !relay_live || relay_degraded                       ? coral
                               : !online_mode || latency_ms < 0 || latency_ms < 90 ? Color{84, 220, 158, 255}
                               : latency_ms < 180                                  ? gold
                                                                                   : coral;
-        DrawCircle(976, 63, 5, quality);
-        text(bold, mode_badge.c_str(), 992, 53, 14, Color{210, 218, 236, 255}, .25F);
+        draw_status_pill(bold, {955, 44, 178, 38}, mode_badge.c_str(), quality);
 
-        DrawRectangleRounded({45, 142, 382, 488}, .055F, 18, Color{0, 0, 0, 55});
-        DrawRectangleRounded({38, 135, 382, 488}, .055F, 18, panel);
-        DrawRectangleRoundedLinesEx({38, 135, 382, 488}, .055F, 18, 1, Color{255, 255, 255, 24});
-        text(bold, "Match", 68, 164, 25, RAYWHITE);
+        draw_card({38, 135, 382, 488}, .055F);
+        text(bold, "Match", 68, 164, 25, text_primary);
         if (online_mode) {
             text(bold, "ROOM", 68, 197, 13, muted, .8F);
             text(regular, "CODE", 68, 213, 12, muted, .8F);
@@ -777,14 +870,40 @@ int app::run_game() {
             text(regular, "First to your own finish line", 68, 197, 15, muted);
         }
 
-        DrawRectangleRounded({65, 237, 328, 82}, .18F, 16, Color{255, 255, 255, 9});
+        const bool coral_active = !round_revealed && game.current() == Player::coral;
+        const bool gold_active = !round_revealed && game.current() == Player::gold;
+        DrawRectangleRounded(
+            {65, 237, 328, 82},
+            .18F,
+            16,
+            coral_active ? Color{coral.r, coral.g, coral.b, 18} : Color{255, 255, 255, 9}
+        );
+        DrawRectangleRoundedLinesEx(
+            {65, 237, 328, 82},
+            .18F,
+            16,
+            coral_active ? 2 : 1,
+            coral_active ? Color{coral.r, coral.g, coral.b, 90} : Color{255, 255, 255, 13}
+        );
         draw_disc(96, 278, 19, coral, 1);
         const std::string coral_label = player_label(Player::coral);
         text(bold, coral_label.c_str(), 130, 254, coral_label.size() > 15 ? 16 : 19, RAYWHITE);
         text(regular, online_mode ? "Coral  |  HOST" : "Coral", 130, 281, 14, muted);
         text(bold, TextFormat("%02d", coral_score), 335, 250, 30, coral);
 
-        DrawRectangleRounded({65, 331, 328, 82}, .18F, 16, Color{255, 255, 255, 9});
+        DrawRectangleRounded(
+            {65, 331, 328, 82},
+            .18F,
+            16,
+            gold_active ? Color{gold.r, gold.g, gold.b, 18} : Color{255, 255, 255, 9}
+        );
+        DrawRectangleRoundedLinesEx(
+            {65, 331, 328, 82},
+            .18F,
+            16,
+            gold_active ? 2 : 1,
+            gold_active ? Color{gold.r, gold.g, gold.b, 90} : Color{255, 255, 255, 13}
+        );
         draw_disc(96, 372, 19, gold, 1);
         const std::string gold_label = player_label(Player::gold);
         text(bold, gold_label.c_str(), 130, 348, gold_label.size() > 15 ? 16 : 19, RAYWHITE);
@@ -795,7 +914,11 @@ int app::run_game() {
 
         const Player focus_player = round_revealed && game.winner() != Player::none ? game.winner() : game.current();
         text(
-            regular, round_revealed ? (game.draw() ? "Round complete" : "Round winner") : "Current turn", 68, 490, 15,
+            regular,
+            round_revealed ? (game.draw() ? "Round complete" : "Round winner") : "Current turn",
+            68,
+            490,
+            15,
             muted
         );
         if (!round_revealed || !game.draw()) {
@@ -805,21 +928,49 @@ int app::run_game() {
         } else {
             text(bold, "Even match", 68, 529, 22, RAYWHITE);
         }
-        DrawRectangleRounded({65, 580, 116, 29}, .45F, 16, Color{255, 255, 255, 10});
-        text(bold, online_mode ? "R  Vote rematch" : "R  Rematch", 80, 586, 13, Color{209, 219, 240, 255});
-        DrawRectangleRounded({190, 580, 95, 29}, .45F, 16, Color{255, 255, 255, 10});
-        text(bold, online_mode ? "Live relay" : "U  Undo", 208, 586, 13, Color{209, 219, 240, 255});
-        DrawRectangleRounded({294, 580, 99, 29}, .45F, 16, Color{255, 255, 255, 10});
-        text(bold, online_mode ? "F1  Local" : "M  Reset", 307, 586, 13, Color{209, 219, 240, 255});
+        draw_button(
+            bold,
+            rematch_button,
+            online_mode ? "R  Vote rematch" : "R  Rematch",
+            player_color(focus_player),
+            true,
+            false,
+            12
+        );
+        draw_button(
+            bold,
+            context_button,
+            online_mode ? "Live relay" : "U  Undo",
+            online_mode ? success : Color{147, 207, 255, 255},
+            !online_mode,
+            false,
+            12
+        );
+        draw_button(
+            bold,
+            mode_button,
+            online_mode ? "F1  Local" : "M  Reset",
+            Color{147, 207, 255, 255},
+            true,
+            false,
+            12
+        );
 
         // --- Drawing: the board, discs, aim previews and win line ---
 
         DrawRectangleRounded(
-            {board_x - 7, board_y + 2, board_width + 24, board_height + 25}, .04F, 16, Color{0, 0, 0, 90}
+            {board_x - 7, board_y + 2, board_width + 24, board_height + 25},
+            .04F,
+            16,
+            Color{0, 0, 0, 90}
         );
         DrawRectangleRounded({board_x - 12, board_y - 12, board_width + 24, board_height + 24}, .04F, 16, board_color);
         DrawRectangleRoundedLinesEx(
-            {board_x - 12, board_y - 12, board_width + 24, board_height + 24}, .04F, 16, 1, Color{255, 255, 255, 36}
+            {board_x - 12, board_y - 12, board_width + 24, board_height + 24},
+            .04F,
+            16,
+            1,
+            Color{255, 255, 255, 36}
         );
         const bool can_aim =
             !replay_active && (!online_mode || (rival_connected && online_seat == static_cast<int>(game.current())));
@@ -829,7 +980,9 @@ int app::run_game() {
         if (!falling.active && !game.over() && (can_aim || show_opponent_aim)) {
             const Color aim_color = player_color(game.current());
             DrawRectangleRounded(
-                {board_x + aimed_column * cell + 7, board_y - 4, cell - 14, board_height + 8}, .18F, 12,
+                {board_x + aimed_column * cell + 7, board_y - 4, cell - 14, board_height + 8},
+                .18F,
+                12,
                 Color{aim_color.r, aim_color.g, aim_color.b, static_cast<unsigned char>(show_opponent_aim ? 22 : 13)}
             );
         }
@@ -853,32 +1006,50 @@ int app::run_game() {
 
         if (falling.active)
             draw_disc(
-                board_x + falling.move.column * cell + cell / 2, falling.y, 29, player_color(falling.move.player), 2
+                board_x + falling.move.column * cell + cell / 2,
+                falling.y,
+                29,
+                player_color(falling.move.player),
+                2
             );
         if (!falling.active && !game.over() && can_aim) {
             const float preview_x = board_x + selected_column * cell + cell / 2;
             draw_disc(preview_x, board_y - 55, 22, player_color(game.current()), 2);
             DrawTriangle(
-                {preview_x - 6, board_y - 22}, {preview_x + 6, board_y - 22}, {preview_x, board_y - 13},
+                {preview_x - 6, board_y - 22},
+                {preview_x + 6, board_y - 22},
+                {preview_x, board_y - 13},
                 player_color(game.current())
             );
         } else if (!falling.active && !game.over() && show_opponent_aim) {
             const float preview_x = board_x + opponent_column * cell + cell / 2;
             const Color hint = player_color(game.current());
             DrawCircle(
-                static_cast<int>(preview_x), static_cast<int>(board_y - 55), 22, Color{hint.r, hint.g, hint.b, 42}
+                static_cast<int>(preview_x),
+                static_cast<int>(board_y - 55),
+                22,
+                Color{hint.r, hint.g, hint.b, 42}
             );
             DrawCircleLines(
-                static_cast<int>(preview_x), static_cast<int>(board_y - 55), 22, Color{hint.r, hint.g, hint.b, 190}
+                static_cast<int>(preview_x),
+                static_cast<int>(board_y - 55),
+                22,
+                Color{hint.r, hint.g, hint.b, 190}
             );
             DrawTriangle(
-                {preview_x - 6, board_y - 22}, {preview_x + 6, board_y - 22}, {preview_x, board_y - 13},
+                {preview_x - 6, board_y - 22},
+                {preview_x + 6, board_y - 22},
+                {preview_x, board_y - 13},
                 Color{hint.r, hint.g, hint.b, 145}
             );
             const std::string aiming = online_names[opponent_cursor_seat == 2 ? 1 : 0] + " is aiming";
             const Vector2 aiming_size = MeasureTextEx(regular, aiming.c_str(), 13, 0);
             text(
-                regular, aiming.c_str(), preview_x - aiming_size.x / 2, board_y - 91, 13,
+                regular,
+                aiming.c_str(),
+                preview_x - aiming_size.x / 2,
+                board_y - 91,
+                13,
                 Color{hint.r, hint.g, hint.b, 220}
             );
         }
@@ -927,10 +1098,18 @@ int app::run_game() {
             const float center = board_x + board_width / 2;
             DrawRectangleRounded({center - bounds.x / 2 - 23, 78, bounds.x + 46, 48}, .45F, 16, Color{18, 24, 39, 248});
             DrawRectangleRoundedLinesEx(
-                {center - bounds.x / 2 - 23, 78, bounds.x + 46, 48}, .45F, 16, 1, Color{255, 255, 255, 32}
+                {center - bounds.x / 2 - 23, 78, bounds.x + 46, 48},
+                .45F,
+                16,
+                1,
+                Color{255, 255, 255, 32}
             );
             text(
-                bold, banner.c_str(), center - bounds.x / 2, 85, 29,
+                bold,
+                banner.c_str(),
+                center - bounds.x / 2,
+                85,
+                29,
                 game.draw() ? RAYWHITE : player_color(game.winner())
             );
         } else if (replay_active) {
@@ -942,20 +1121,31 @@ int app::run_game() {
             text(bold, replay_title.c_str(), center - bounds.x / 2, 87, 25, RAYWHITE);
         }
 
+        if (online_mode) {
+            DrawRectangleRounded({38, 647, 382, 38}, .24F, 14, Color{147, 207, 255, 9});
+            DrawCircle(58, 666, 4, relay_live ? quality : coral);
+            text(regular, online_status.c_str(), 72, 656, 14, Color{164, 211, 255, 255});
+        } else {
+            draw_button(bold, online_button, "O  Play online", coral, true, true, 14);
+        }
+        DrawRectangleRounded({510, 680, 623, 42}, .22F, 14, Color{255, 255, 255, 7});
         text(
             regular,
-            replay_active ? "Space pause  |  [ ] speed  |  Home restart  |  P exit replay"
-            : online_mode ? "E reactions  |  S sound  |  P replay after a round"
-                          : "Click a column  /  A D + Enter  /  1-7 quick drop  |  S sound",
-            568, 694, 15, muted
+            replay_active ? "Space  Pause     [ ]  Speed     Home  Restart     P  Exit replay"
+            : online_mode ? "E  Reactions     P  Replay     S  Sound"
+                          : "Click a column     A / D  Move     Enter  Drop     1-7  Quick drop",
+            536,
+            694,
+            13,
+            text_secondary
         );
-        text(regular, "Esc to exit", 1050, 694, 15, muted);
-        text(
-            regular, online_mode ? online_status.c_str() : "O  Play online", 42, 661, 15,
-            online_mode ? Color{147, 207, 255, 255} : muted
-        );
+        text(regular, "Esc  Quit", 1060, 694, 13, muted);
         if (online_lobby) {
-            draw_online_lobby(regular, bold, {player_name_input, room_input, online_status, name_field_active});
+            draw_online_lobby(
+                regular,
+                bold,
+                {player_name_input, room_input, online_status, name_field_active, online_attempt_pending}
+            );
         }
         draw_reaction_bubbles(bold, emoji, emoji_loaded, reactions);
         if (reaction_panel) {
@@ -966,10 +1156,23 @@ int app::run_game() {
         }
         if (screen_flash > .02F)
             DrawRectangle(
-                0, 0, screen_width, screen_height, Color{255, 255, 255, static_cast<unsigned char>(screen_flash * 70)}
+                0,
+                0,
+                screen_width,
+                screen_height,
+                Color{255, 255, 255, static_cast<unsigned char>(screen_flash * 70)}
             );
         EndDrawing();
     }
+
+    if (online_attempt_pending) {
+        online_client.cancel_pending_operation();
+        try {
+            online_attempt.get();
+        } catch (const std::exception&) {}
+        online_attempt_pending = false;
+    }
+    online_client.disconnect();
 
     if (sound_settings_dirty) audio.save_settings();
 

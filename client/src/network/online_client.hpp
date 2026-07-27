@@ -76,6 +76,14 @@ class Client {
     Client(const Client&) = delete;
     Client() = default;
 
+    void begin_operation() { cancel_requested_ = false; }
+
+    void cancel_pending_operation() {
+        cancel_requested_ = true;
+        std::lock_guard lock(operation_mutex_);
+        if (operation_thread_) CancelSynchronousIo(operation_thread_);
+    }
+
     std::optional<std::string> create_room() {
         const auto response = request(L"POST", L"/rooms");
         const auto room = connect4::online_helpers::json_string_value(response, "room");
@@ -84,34 +92,46 @@ class Client {
 
     bool connect(const std::string& room, const std::string& name, const std::string& token = "") {
         disconnect();
+        if (cancel_requested_) return false;
         room_ = uppercase(room);
 
         const std::string path =
             "/rooms/" + room_ + "?name=" + url_encode(name) + (token.empty() ? "" : "&token=" + url_encode(token));
 
-        session_ = WinHttpOpen(
-            L"ConnectFourNeon/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0
+        HINTERNET session = WinHttpOpen(
+            L"ConnectFourNeon/1.0",
+            WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+            WINHTTP_NO_PROXY_NAME,
+            WINHTTP_NO_PROXY_BYPASS,
+            0
         );
+        if (!session) return false;
+        BlockingOperation operation(*this);
+        if (!operation) {
+            WinHttpCloseHandle(session);
+            return false;
+        }
 
-        if (!session_) return false;
+        WinHttpSetTimeouts(session, 5000, 5000, 5000, 5000);
+        HINTERNET connection = WinHttpConnect(session, host, INTERNET_DEFAULT_HTTPS_PORT, 0);
+        if (!connection || cancel_requested_) return fail_pending_connect(nullptr, connection, session);
 
-        WinHttpSetTimeouts(session_, 5000, 5000, 5000, 5000);
-
-        connection_ = WinHttpConnect(session_, host, INTERNET_DEFAULT_HTTPS_PORT, 0);
-
-        if (!connection_) return fail_connect();
-
-        request_ = WinHttpOpenRequest(
-            connection_, L"GET", widen(path).c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
+        HINTERNET request = WinHttpOpenRequest(
+            connection,
+            L"GET",
+            widen(path).c_str(),
+            nullptr,
+            WINHTTP_NO_REFERER,
+            WINHTTP_DEFAULT_ACCEPT_TYPES,
             WINHTTP_FLAG_SECURE
         );
-
-        if (!request_) return fail_connect();
-        if (!WinHttpSetOption(request_, WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, nullptr, 0)) return fail_connect();
-        if (!WinHttpSendRequest(request_, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0))
-            return fail_connect();
-
-        if (!WinHttpReceiveResponse(request_, nullptr)) return fail_connect();
+        if (!request || cancel_requested_) return fail_pending_connect(request, connection, session);
+        if (!WinHttpSetOption(request, WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, nullptr, 0))
+            return fail_pending_connect(request, connection, session);
+        if (!WinHttpSendRequest(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0))
+            return fail_pending_connect(request, connection, session);
+        if (cancel_requested_ || !WinHttpReceiveResponse(request, nullptr))
+            return fail_pending_connect(request, connection, session);
 
         // The 5s session receive timeout guards the HTTP handshake above, but
         // the WebSocket inherits it for WinHttpWebSocketReceive and it would
@@ -121,18 +141,42 @@ class Client {
         // network must still wake the receiver thread so disconnect() can
         // join it. keep_alive() flags a dead link after 15s of ping silence;
         // 20s bounds how long the receiver can linger past that.
-        WinHttpSetTimeouts(request_, 5000, 5000, 5000, 20000);
+        WinHttpSetTimeouts(request, 5000, 5000, 5000, 20000);
 
-        HINTERNET upgraded = WinHttpWebSocketCompleteUpgrade(request_, 0);
-        WinHttpCloseHandle(request_);
-        request_ = nullptr;
+        HINTERNET upgraded = WinHttpWebSocketCompleteUpgrade(request, 0);
+        WinHttpCloseHandle(request);
+        request = nullptr;
+        if (!upgraded) return fail_pending_connect(nullptr, connection, session);
+        DWORD close_timeout_ms = 1000;
+        if (!WinHttpSetOption(
+                upgraded,
+                WINHTTP_OPTION_WEB_SOCKET_CLOSE_TIMEOUT,
+                &close_timeout_ms,
+                sizeof(close_timeout_ms)
+            )) {
+            WinHttpCloseHandle(upgraded);
+            return fail_pending_connect(nullptr, connection, session);
+        }
 
-        if (!upgraded) return fail_connect();
+        if (cancel_requested_) {
+            WinHttpCloseHandle(upgraded);
+            if (connection) WinHttpCloseHandle(connection);
+            WinHttpCloseHandle(session);
+            return false;
+        }
 
+        session_ = session;
+        connection_ = connection;
         {
-            std::lock_guard lock(socket_mutex_);
+            std::lock_guard socket_lock(socket_mutex_);
             socket_ = upgraded;
         }
+        operation.finish();
+        if (cancel_requested_) {
+            close_handles();
+            return false;
+        }
+
         connected_ = true;
         ping_sent_ms_ = 0;
         next_ping_ms_ = 0;
@@ -144,17 +188,26 @@ class Client {
     void disconnect() {
         connected_ = false;
         {
-            // Shutdown uses only the WebSocket send side and is allowed while
-            // the receiver thread is blocked in WinHttpWebSocketReceive. Close
-            // is not.
+            // Close cancels a pending WinHttpWebSocketReceive and closes both
+            // directions of the WebSocket. Shutdown only closes the send side
+            // and can leave the receiver blocked until its timeout.
             std::lock_guard lock(socket_mutex_);
-            if (socket_) WinHttpWebSocketShutdown(socket_, WINHTTP_WEB_SOCKET_SUCCESS_CLOSE_STATUS, nullptr, 0);
+            if (socket_) WinHttpWebSocketClose(socket_, WINHTTP_WEB_SOCKET_SUCCESS_CLOSE_STATUS, nullptr, 0);
         }
         if (receiver_.joinable()) receiver_.join();
+        {
+            // The receiver may have completed one buffered message while the
+            // disconnect began. Never allow that stale online event to affect
+            // a later local match or a replacement connection.
+            std::lock_guard lock(events_mutex_);
+            events_.clear();
+        }
         close_handles();
     }
 
     bool connected() const { return connected_; }
+
+    bool heartbeat_degraded() const { return ping_timeout_reported_; }
 
     const std::string& room() const { return room_; }
 
@@ -206,6 +259,9 @@ class Client {
     HINTERNET socket_{};
     std::thread receiver_;
     std::atomic_bool connected_{false};
+    std::atomic_bool cancel_requested_{false};
+    std::mutex operation_mutex_;
+    HANDLE operation_thread_{};
     // Guards socket_ against concurrent teardown/recreation by the async
     // connect task while the main thread sends. The receiver thread reads the
     // handle without the lock: it only exists between the locked assignment in
@@ -218,8 +274,57 @@ class Client {
     std::atomic<long long> next_ping_ms_{0};
     std::atomic_bool ping_timeout_reported_{false};
 
-    bool fail_connect() {
-        close_handles();
+    bool register_operation_thread() {
+        HANDLE thread{};
+        if (!DuplicateHandle(
+                GetCurrentProcess(),
+                GetCurrentThread(),
+                GetCurrentProcess(),
+                &thread,
+                0,
+                FALSE,
+                DUPLICATE_SAME_ACCESS
+            ))
+            return false;
+        std::lock_guard lock(operation_mutex_);
+        if (cancel_requested_ || operation_thread_) {
+            CloseHandle(thread);
+            return false;
+        }
+        operation_thread_ = thread;
+        return true;
+    }
+
+    void unregister_operation_thread() {
+        std::lock_guard lock(operation_mutex_);
+        if (!operation_thread_) return;
+        CloseHandle(operation_thread_);
+        operation_thread_ = nullptr;
+    }
+
+    class BlockingOperation {
+       public:
+        explicit BlockingOperation(Client& client) : client_(client), active_(client_.register_operation_thread()) {}
+
+        ~BlockingOperation() { finish(); }
+
+        explicit operator bool() const { return active_; }
+
+        void finish() {
+            if (!active_) return;
+            client_.unregister_operation_thread();
+            active_ = false;
+        }
+
+       private:
+        Client& client_;
+        bool active_{};
+    };
+
+    bool fail_pending_connect(HINTERNET request, HINTERNET connection, HINTERNET session) {
+        if (request) WinHttpCloseHandle(request);
+        if (connection) WinHttpCloseHandle(connection);
+        if (session) WinHttpCloseHandle(session);
         return false;
     }
 
@@ -256,7 +361,9 @@ class Client {
             std::lock_guard lock(socket_mutex_);
             if (!socket_ || !connected_) return;
             result = WinHttpWebSocketSend(
-                socket_, WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE, const_cast<char*>(message.data()),
+                socket_,
+                WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE,
+                const_cast<char*>(message.data()),
                 static_cast<DWORD>(message.size())
             );
         }
@@ -487,21 +594,39 @@ class Client {
 
     std::string request(const wchar_t* method, const wchar_t* path) {
         HINTERNET session = WinHttpOpen(
-            L"ConnectFourNeon/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0
+            L"ConnectFourNeon/1.0",
+            WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+            WINHTTP_NO_PROXY_NAME,
+            WINHTTP_NO_PROXY_BYPASS,
+            0
         );
         if (!session) return {};
+        BlockingOperation operation(*this);
+        if (!operation) {
+            WinHttpCloseHandle(session);
+            return {};
+        }
         WinHttpSetTimeouts(session, 5000, 5000, 5000, 5000);
         HINTERNET connection = WinHttpConnect(session, host, INTERNET_DEFAULT_HTTPS_PORT, 0);
         HINTERNET request = connection ? WinHttpOpenRequest(
-                                             connection, method, path, nullptr, WINHTTP_NO_REFERER,
-                                             WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE
+                                             connection,
+                                             method,
+                                             path,
+                                             nullptr,
+                                             WINHTTP_NO_REFERER,
+                                             WINHTTP_DEFAULT_ACCEPT_TYPES,
+                                             WINHTTP_FLAG_SECURE
                                          )
                                        : nullptr;
         std::string response;
-        if (request &&
+        if (!cancel_requested_ && request &&
             WinHttpSendRequest(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) &&
-            WinHttpReceiveResponse(request, nullptr)) {
+            !cancel_requested_ && WinHttpReceiveResponse(request, nullptr)) {
             while (true) {
+                if (cancel_requested_) {
+                    response.clear();
+                    break;
+                }
                 DWORD available{};
                 if (!WinHttpQueryDataAvailable(request, &available) || !available) break;
                 if (available > max_server_message_bytes - response.size()) {

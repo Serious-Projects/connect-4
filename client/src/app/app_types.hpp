@@ -21,6 +21,18 @@ inline constexpr Color coral{255, 82, 116, 255};
 inline constexpr Color gold{255, 196, 61, 255};
 inline constexpr Color empty_hole{7, 10, 20, 255};
 inline constexpr Color muted{139, 151, 178, 255};
+inline constexpr Color text_primary{239, 243, 252, 255};
+inline constexpr Color text_secondary{164, 175, 199, 255};
+inline constexpr Color surface{18, 24, 39, 248};
+inline constexpr Color surface_raised{25, 33, 52, 250};
+inline constexpr Color border{255, 255, 255, 28};
+inline constexpr Color success{84, 220, 158, 255};
+
+inline constexpr Rectangle online_button{38, 647, 150, 38};
+inline constexpr Rectangle rematch_button{65, 580, 116, 29};
+inline constexpr Rectangle context_button{190, 580, 95, 29};
+inline constexpr Rectangle mode_button{294, 580, 99, 29};
+inline constexpr Rectangle sound_button{848, 44, 92, 38};
 
 struct FallingDisc {
     bool active{};

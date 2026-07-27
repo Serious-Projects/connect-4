@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   decodeClientMessage,
+  playerNameForNewIdentity,
   sanitizePlayerName,
 } from "../src/protocol.js";
 
@@ -34,4 +35,10 @@ test("sanitizes names by code point and removes control characters", () => {
   assert.equal(sanitizePlayerName("J@a#y"), "Jay");
   assert.equal(sanitizePlayerName("abcdefghijklmnopq"), "abcdefghijklmnop");
   assert.equal(sanitizePlayerName("😀😀😀"), "");
+});
+
+test("a new seat identity never inherits the previous player's name", () => {
+  assert.equal(playerNameForNewIdentity("Ayush", 1), "Ayush");
+  assert.equal(playerNameForNewIdentity("", 1), "Player one");
+  assert.equal(playerNameForNewIdentity("", 2), "Player two");
 });

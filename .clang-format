@@ -9,10 +9,10 @@ ContinuationIndentWidth: 4
 
 BreakBeforeBraces: Attach
 ColumnLimit: 120
-BinPackArguments: true
-BinPackParameters: true
-AllowAllArgumentsOnNextLine: true
-AllowAllParametersOfDeclarationOnNextLine: true
+BinPackArguments: false
+BinPackParameters: false
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
 
 SpaceBeforeParens: ControlStatements
 SpacesInAngles: Never

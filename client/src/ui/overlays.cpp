@@ -9,57 +9,78 @@ namespace app::overlays {
 namespace {
 
 void draw_slider(Font regular, Font bold, const char* label, Rectangle slider, float value) {
-    ui::text(bold, label, 420, slider.y - 24, 15, RAYWHITE);
+    ui::text(bold, label, 420, slider.y - 25, 15, text_primary);
     DrawRectangleRounded(slider, .8F, 8, Color{255, 255, 255, 20});
     DrawRectangleRounded({slider.x, slider.y, slider.width * value, slider.height}, .8F, 8, coral);
     DrawCircle(
-        static_cast<int>(slider.x + slider.width * value), static_cast<int>(slider.y + slider.height / 2), 8, RAYWHITE
+        static_cast<int>(slider.x + slider.width * value),
+        static_cast<int>(slider.y + slider.height / 2),
+        12,
+        Color{coral.r, coral.g, coral.b, 28}
     );
-    ui::text(regular, TextFormat("%d%%", static_cast<int>(value * 100)), 750, slider.y - 6, 13, muted);
+    DrawCircle(
+        static_cast<int>(slider.x + slider.width * value),
+        static_cast<int>(slider.y + slider.height / 2),
+        8,
+        RAYWHITE
+    );
+    ui::text(regular, TextFormat("%d%%", static_cast<int>(value * 100)), 750, slider.y - 7, 13, text_secondary);
 }
 
 }  // namespace
 
 void draw_online_lobby(Font regular, Font bold, const LobbyView& view) {
-    DrawRectangle(0, 0, screen_width, screen_height, Color{3, 6, 14, 205});
-    DrawRectangleRounded({260, 120, 660, 470}, .045F, 22, panel);
-    DrawRectangleRoundedLinesEx({260, 120, 660, 470}, .045F, 22, 1, Color{255, 255, 255, 38});
-    ui::text(bold, "Play online", 310, 154, 35, RAYWHITE);
-    ui::text(regular, "Private rooms, real names, live opponent intent.", 312, 198, 18, muted);
+    DrawRectangle(0, 0, screen_width, screen_height, Color{3, 6, 14, 220});
+    DrawCircleGradient({880, 100}, 260, Color{65, 79, 180, 32}, Color{8, 11, 21, 0});
+    ui::draw_card({260, 100, 660, 510}, .045F, Color{17, 23, 38, 252});
+    DrawRectangleRounded({288, 130, 46, 46}, .32F, 14, Color{coral.r, coral.g, coral.b, 32});
+    DrawCircle(303, 153, 7, coral);
+    DrawCircle(319, 153, 7, gold);
+    ui::text(bold, "Play online", 350, 124, 31, text_primary);
+    ui::text(regular, "Create a private match or join a friend's room.", 350, 158, 16, text_secondary);
+    ui::text(bold, "ESC", 858, 126, 11, muted, .6F);
 
-    ui::text(bold, "YOUR NAME", 310, 235, 13, view.name_field_active ? coral : muted, .8F);
-    DrawRectangleRounded(lobby_name_field, .18F, 14, Color{255, 255, 255, 10});
-    DrawRectangleRoundedLinesEx(
-        lobby_name_field, .18F, 14, view.name_field_active ? 2 : 1,
-        view.name_field_active ? Color{coral.r, coral.g, coral.b, 170} : Color{255, 255, 255, 28}
+    ui::text(bold, "DISPLAY NAME", 310, 218, 12, view.name_field_active ? coral : text_secondary, .9F);
+    ui::draw_input(
+        bold,
+        lobby_name_field,
+        view.player_name.c_str(),
+        "Type your name",
+        coral,
+        view.name_field_active,
+        19
     );
+
+    ui::text(bold, "START A NEW MATCH", 310, 329, 12, text_secondary, .9F);
+    ui::draw_button(
+        bold,
+        lobby_create_button,
+        view.busy ? "Connecting..." : "Create private room",
+        coral,
+        !view.busy,
+        true,
+        16
+    );
+    ui::text(bold, "OR JOIN", 575, 329, 12, text_secondary, .9F);
+    ui::draw_input(bold, lobby_code_field, view.room_code.c_str(), "ROOM CODE", gold, !view.name_field_active, 17);
+    ui::draw_button(bold, lobby_join_button, "Join", gold, !view.busy && view.room_code.size() == 6, true, 16);
+
+    DrawRectangleRounded({310, 436, 560, 48}, .18F, 14, Color{147, 207, 255, 10});
+    DrawCircle(330, 460, 5, view.busy ? gold : Color{147, 207, 255, 255});
+    ui::text(regular, view.status.c_str(), 346, 449, 15, Color{164, 211, 255, 255});
+    DrawLine(310, 510, 870, 510, Color{255, 255, 255, 18});
+    ui::text(regular, "Ctrl+V  Paste code", 310, 534, 13, text_secondary);
+    ui::text(regular, "Tab  Switch field", 474, 534, 13, text_secondary);
+    ui::text(regular, "F1  Local play", 634, 534, 13, text_secondary);
+    ui::text(regular, "Enter  Join", 768, 534, 13, text_secondary);
     ui::text(
-        bold, view.player_name.empty() ? "TYPE YOUR NAME" : view.player_name.c_str(), 330, 275, 20,
-        view.player_name.empty() ? muted : RAYWHITE
+        regular,
+        "Your room code is private. Share it only with the person you want to play.",
+        310,
+        569,
+        13,
+        muted
     );
-
-    DrawRectangleRounded(lobby_create_button, .2F, 16, Color{coral.r, coral.g, coral.b, 44});
-    DrawRectangleRoundedLinesEx(lobby_create_button, .2F, 16, 1, Color{coral.r, coral.g, coral.b, 110});
-    ui::text(bold, "Create room", 352, 368, 19, coral);
-    ui::text(bold, "ROOM CODE", 575, 329, 12, !view.name_field_active ? gold : muted, .8F);
-    DrawRectangleRounded(lobby_code_field, .18F, 14, Color{255, 255, 255, 10});
-    DrawRectangleRoundedLinesEx(
-        lobby_code_field, .18F, 14, !view.name_field_active ? 2 : 1,
-        !view.name_field_active ? Color{gold.r, gold.g, gold.b, 170} : Color{255, 255, 255, 28}
-    );
-    ui::text(
-        bold, view.room_code.empty() ? "PASTE CODE" : view.room_code.c_str(), 592, 368, 18,
-        view.room_code.empty() ? muted : gold, 1.0F
-    );
-    DrawRectangleRounded(
-        lobby_join_button, .22F, 16,
-        view.room_code.size() == 6 ? Color{gold.r, gold.g, gold.b, 45} : Color{255, 255, 255, 8}
-    );
-    ui::text(bold, "Join", 795, 369, 18, view.room_code.size() == 6 ? gold : muted);
-
-    ui::text(regular, view.status.c_str(), 312, 444, 16, Color{147, 207, 255, 255});
-    ui::text(regular, "Click the code field and press Ctrl+V to paste  |  Tab switches fields", 312, 480, 14, muted);
-    ui::text(regular, "F2 creates a room  |  Enter joins  |  F1 local play  |  Esc exits", 312, 535, 14, muted);
 }
 
 void draw_reaction_bubbles(Font bold, Font emoji, bool emoji_available, const std::vector<ReactionBubble>& reactions) {
@@ -71,12 +92,18 @@ void draw_reaction_bubbles(Font bold, Font emoji, bool emoji_available, const st
         const unsigned char alpha = static_cast<unsigned char>(220 * alpha_scale);
         DrawCircleV({x, y}, 33 + std::sin(elapsed * 8) * 2, Color{18, 24, 39, alpha});
         DrawCircleLines(
-            static_cast<int>(x), static_cast<int>(y), 33,
+            static_cast<int>(x),
+            static_cast<int>(y),
+            33,
             Color{255, 255, 255, static_cast<unsigned char>(80 * alpha_scale)}
         );
         if (emoji_available) {
             DrawTextCodepoint(
-                emoji, ui::reaction_codepoint(reaction.reaction), {x - 22, y - 23}, 44, Color{255, 255, 255, alpha}
+                emoji,
+                ui::reaction_codepoint(reaction.reaction),
+                {x - 22, y - 23},
+                44,
+                Color{255, 255, 255, alpha}
             );
         } else {
             const std::string fallback = reaction.reaction == "thumbs"  ? "GG"
@@ -90,14 +117,21 @@ void draw_reaction_bubbles(Font bold, Font emoji, bool emoji_available, const st
 }
 
 void draw_reaction_panel(Font regular, Font bold, Font emoji, bool emoji_available) {
-    DrawRectangleRounded({592, 282, 350, 130}, .14F, 18, Color{18, 24, 39, 250});
-    DrawRectangleRoundedLinesEx({592, 282, 350, 130}, .14F, 18, 1, Color{255, 255, 255, 36});
-    ui::text(bold, "Send a reaction", 616, 297, 17, RAYWHITE);
+    ui::draw_card({592, 282, 350, 130}, .14F, surface_raised);
+    ui::text(bold, "Send a reaction", 616, 297, 17, text_primary);
     const char* labels[]{"GG", "FIRE", "LOL", "WOW"};
     const char* ids[]{"thumbs", "fire", "laugh", "wow"};
     for (int index = 0; index < 4; ++index) {
         const Rectangle button{620.0F + index * 76.0F, 330, 60, 60};
-        DrawRectangleRounded(button, .32F, 14, Color{255, 255, 255, 11});
+        const bool hovered = CheckCollisionPointRec(GetMousePosition(), button);
+        DrawRectangleRounded(button, .32F, 14, Color{255, 255, 255, static_cast<unsigned char>(hovered ? 28 : 11)});
+        DrawRectangleRoundedLinesEx(
+            button,
+            .32F,
+            14,
+            hovered ? 2 : 1,
+            hovered ? Color{coral.r, coral.g, coral.b, 150} : Color{255, 255, 255, 20}
+        );
         if (emoji_available)
             DrawTextCodepoint(emoji, ui::reaction_codepoint(ids[index]), {button.x + 12, button.y + 7}, 36, RAYWHITE);
         else
@@ -107,19 +141,16 @@ void draw_reaction_panel(Font regular, Font bold, Font emoji, bool emoji_availab
 }
 
 void draw_sound_panel(Font regular, Font bold, const SoundSettings& settings) {
-    DrawRectangle(0, 0, screen_width, screen_height, Color{3, 6, 14, 190});
-    DrawRectangleRounded({370, 174, 440, 370}, .06F, 20, panel);
-    DrawRectangleRoundedLinesEx({370, 174, 440, 370}, .06F, 20, 1, Color{255, 255, 255, 38});
-    ui::text(bold, "Sound controls", 420, 210, 30, RAYWHITE);
-    ui::text(regular, "Saved automatically", 422, 247, 14, muted);
+    DrawRectangle(0, 0, screen_width, screen_height, Color{3, 6, 14, 215});
+    ui::draw_card({370, 174, 440, 370}, .06F, Color{17, 23, 38, 252});
+    ui::text(bold, "Sound", 420, 207, 30, text_primary);
+    ui::text(regular, "Changes are saved automatically", 422, 244, 14, text_secondary);
+    ui::text(bold, "ESC", 752, 214, 11, muted, .6F);
     draw_slider(regular, bold, "Master", master_slider, settings.master);
     draw_slider(regular, bold, "Disc effects", effects_slider, settings.effects);
     draw_slider(regular, bold, "Victory celebration", celebration_slider, settings.celebration);
-    DrawRectangleRounded(
-        mute_button, .3F, 14, settings.muted ? Color{coral.r, coral.g, coral.b, 55} : Color{255, 255, 255, 12}
-    );
-    ui::text(bold, settings.muted ? "Unmute" : "Mute all", 487, 474, 15, settings.muted ? coral : RAYWHITE);
-    ui::text(regular, "Press S to close", 625, 476, 14, muted);
+    ui::draw_button(bold, mute_button, settings.muted ? "Unmute" : "Mute all", coral, true, settings.muted, 15);
+    ui::text(regular, "S or Esc to close", 625, 476, 14, muted);
 }
 
 }  // namespace app::overlays

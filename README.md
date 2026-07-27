@@ -34,6 +34,7 @@ the `MSYS2_UCRT64` environment variable.
 ```powershell
 .\scripts\build.ps1
 .\dist\windows\connect_four.exe
+.\scripts\test-live-client.ps1
 
 cd .\server
 npm test
@@ -42,6 +43,8 @@ npm run test:live
 
 `npm test` is local and deterministic. `npm run test:live` creates a temporary
 room against the deployed relay and exercises a complete two-player session.
+`test-live-client.ps1` verifies the native WinHTTP connection and bounded,
+stale-event-free disconnect path against that same relay.
 
 See [client/README.md](client/README.md) for controls and
 [server/README.md](server/README.md) for the relay API.

@@ -29,3 +29,5 @@ Thumbs.db
 
 # Local runtime data
 *.log
+connect_four_session.txt
+connect_four_settings.txt
